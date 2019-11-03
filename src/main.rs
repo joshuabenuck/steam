@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
 use std::io::Read;
+use std::str::FromStr;
 
 fn u8(buf: &[u8], pos: &mut usize) -> u8 {
     let value = buf[*pos];
@@ -53,46 +54,52 @@ fn main() -> Result<(), Error> {
                 .short("l")
                 .help("List games"),
         )
+        .arg(
+            Arg::with_name("type")
+                .long("type")
+                .short("t")
+                .takes_value(true)
+                .default_value("game")
+                .help("Dump game metadata"),
+        )
+        .arg(
+            Arg::with_name("max")
+                .long("max")
+                .short("m")
+                .takes_value(true)
+                .help("Dump game metadata"),
+        )
+        .arg(
+            Arg::with_name("dump")
+                .long("dump")
+                .short("d")
+                .takes_value(true)
+                .help("Dump game metadata"),
+        )
         .get_matches();
-    let mut buf = Vec::new();
-    fs::File::open("appinfo.vdf")?.read_to_end(&mut buf)?;
-    let mut pos = 0;
-    println!("appinfo: {} bytes", buf.len());
-    let version = u8(&buf, &mut pos);
-    // Doc only knows about 24 and 26. My file has 27. What other diffs are there?
-    if version != 0x24 && version != 0x26 && version != 0x27 {
-        return Err(err_msg(format!("Unknown version: {:x}", version)));
-    }
-    let type_sig = be_u16(&buf, &mut pos);
-    if type_sig != 0x4456 {
-        // DV
-        return Err(err_msg(format!(
-            "File doesn't contain type sig 'DV': 0x{:x}",
-            type_sig
-        )));
-    }
-    let version = u8(&buf, &mut pos);
-    if version != 0x06 && version != 0x07 {
-        return Err(err_msg(format!("Unknown version2: 0x{:x}", version)));
-    }
-    let version = le_u32(&buf, &mut pos);
-    if version != 0x01 {
-        return Err(err_msg(format!("Version3 must be 0x01: 0x{:x}", version)));
-    }
+
     let mut count = 0;
-    loop {
-        let app_id = le_u32(&buf, &mut pos);
-        println!("app_id: {}", app_id);
-        if app_id == 0x00 {
-            break;
+    let max = usize::from_str(matches.value_of("max").unwrap_or("1000"))
+        .expect("Unable to parse 'max' parameter.");
+
+    let app_infos = AppInfo::load()?;
+    let mut games = SteamGame::from(&app_infos);
+    if matches.is_present("list") {
+        games.sort_unstable_by(|e1, e2| e1.title.cmp(&e2.title));
+        for game in &games {
+            println!("{} {} {:?}", game.id, game.title, game.logo);
+            count += 1;
+            if count > max {
+                break;
+            }
         }
-        let size: usize = le_u32(&buf, &mut pos) as usize;
-        let app_info = parse_app_info(&buf[pos..pos + size])?;
-        app_info.print_keys(10);
-        pos += size;
-        count += 1;
-        if count > 10 {
-            break;
+    }
+    if let Some(id) = matches.value_of("dump") {
+        let id = u32::from_str(id)?;
+        for app_info in &app_infos {
+            if app_info.u32_entry(&["appinfo", "appid"]).unwrap() == id {
+                app_info.print_props(100);
+            }
         }
     }
     Ok(())
@@ -117,18 +124,56 @@ struct AppInfo {
 }
 
 impl AppInfo {
-    pub fn print_keys(&self, depth: usize) {
-        self.print_keys_helper(&self.props, depth, &"".to_owned());
+    pub fn load() -> Result<Vec<AppInfo>, Error> {
+        let mut buf = Vec::new();
+        fs::File::open("appinfo.vdf")?.read_to_end(&mut buf)?;
+        let mut pos = 0;
+        println!("appinfo: {} bytes", buf.len());
+        let version = u8(&buf, &mut pos);
+        // Doc only knows about 24 and 26. My file has 27. What other diffs are there?
+        if version != 0x24 && version != 0x26 && version != 0x27 {
+            return Err(err_msg(format!("Unknown version: {:x}", version)));
+        }
+        let type_sig = be_u16(&buf, &mut pos);
+        if type_sig != 0x4456 {
+            // DV
+            return Err(err_msg(format!(
+                "File doesn't contain type sig 'DV': 0x{:x}",
+                type_sig
+            )));
+        }
+        let version = u8(&buf, &mut pos);
+        if version != 0x06 && version != 0x07 {
+            return Err(err_msg(format!("Unknown version2: 0x{:x}", version)));
+        }
+        let version = le_u32(&buf, &mut pos);
+        if version != 0x01 {
+            return Err(err_msg(format!("Version3 must be 0x01: 0x{:x}", version)));
+        }
+        let mut app_infos = Vec::new();
+        loop {
+            let app_id = le_u32(&buf, &mut pos);
+            if app_id == 0x00 {
+                break;
+            }
+            let size: usize = le_u32(&buf, &mut pos) as usize;
+            app_infos.push(parse_app_info(&buf[pos..pos + size])?);
+            pos += size;
+        }
+        Ok(app_infos)
+    }
+    pub fn print_props(&self, depth: usize) {
+        self.print_props_helper(&self.props, depth, &"".to_owned());
     }
 
     // internal helper
-    fn print_keys_helper(&self, props: &HashMap<String, Property>, depth: usize, prefix: &str) {
+    fn print_props_helper(&self, props: &HashMap<String, Property>, depth: usize, prefix: &str) {
         for key in props.keys() {
             let value = props.get(key).unwrap();
             if let Property::Map(nested_props) = value {
                 println!("{}{} (map)", prefix, key);
                 if depth > 0 {
-                    self.print_keys_helper(
+                    self.print_props_helper(
                         nested_props,
                         depth - 1,
                         format!("{}\t", prefix).as_str(),
@@ -138,6 +183,50 @@ impl AppInfo {
                 println!("{}{} {:?}", prefix, key, value);
             }
         }
+    }
+
+    fn string_entry(&self, path: &[&str]) -> Option<String> {
+        match self.entry(path) {
+            Some(Property::String(string)) => Some(string.to_owned()),
+            _ => None,
+        }
+    }
+
+    fn u32_entry(&self, path: &[&str]) -> Option<u32> {
+        match self.entry(path) {
+            Some(Property::Uint32(uint32)) => Some(*uint32),
+            _ => None,
+        }
+    }
+
+    fn u64(&self, path: &[&str]) -> Option<u64> {
+        match self.entry(path) {
+            Some(Property::Uint64(uint64)) => Some(*uint64),
+            _ => None,
+        }
+    }
+
+    fn entry(&self, path: &[&str]) -> Option<&Property> {
+        let mut props = &self.props;
+        let mut value = None;
+        let mut terminal = false;
+        for segment in path {
+            if terminal {
+                // We've reached a terminal property before reaching the
+                // last path segment.
+                return None;
+            }
+            value = props.get(*segment);
+            if value.is_none() {
+                // Unable to find a path segment.
+                return None;
+            }
+            match value.unwrap() {
+                Property::Map(nested_props) => props = nested_props,
+                _ => terminal = true,
+            }
+        }
+        value
     }
 }
 
@@ -228,4 +317,35 @@ fn parse_app_info(buf: &[u8]) -> Result<AppInfo, Error> {
         change_no,
         props: top_level_props,
     })
+}
+
+struct SteamGame {
+    id: u32,
+    title: String,
+    logo: Option<String>,
+}
+
+impl SteamGame {
+    fn from(app_infos: &Vec<AppInfo>) -> Vec<SteamGame> {
+        let mut games = Vec::new();
+        for app_info in app_infos {
+            let app_id = app_info.u32_entry(&["appinfo", "appid"]).unwrap();
+            let name = app_info.string_entry(&["appinfo", "common", "name"]);
+            if name.is_none() {
+                continue;
+            }
+            let r#type = app_info.string_entry(&["appinfo", "common", "type"]);
+            if r#type.is_none() || r#type.unwrap() != "Game" {
+                continue;
+            }
+            let name = name.unwrap();
+            let logo = app_info.string_entry(&["appinfo", "common", "logo"]);
+            games.push(SteamGame {
+                id: app_id,
+                title: name,
+                logo,
+            });
+        }
+        games
+    }
 }
