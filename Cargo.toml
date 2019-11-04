@@ -11,3 +11,6 @@ clap = "*"
 dirs = "*"
 failure = "*"
 glob = "*"
+ggez = "*"
+image = "*"
+image_grid = { path = "../image_grid" }

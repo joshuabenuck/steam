@@ -15,7 +15,10 @@
 
 use clap::{App, Arg};
 use failure::{err_msg, Error};
+use ggez::{event, graphics, Context, GameResult};
 use glob::glob;
+use image::imageops;
+use image_grid::grid::{Grid, TileHandler};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
@@ -50,6 +53,11 @@ fn le_u64(buf: &[u8], pos: &mut usize) -> u64 {
 fn main() -> Result<(), Error> {
     let matches = App::new("steam")
         .about("List and launch games from your local Steam library")
+        .arg(
+            Arg::with_name("launcher")
+                .long("launcher")
+                .help("Grid display of installed games"),
+        )
         .arg(
             Arg::with_name("list")
                 .long("list")
@@ -105,6 +113,25 @@ fn main() -> Result<(), Error> {
         }
     }
 
+    if matches.is_present("launcher") {
+        let cb = ggez::ContextBuilder::new("Image Grid", "Joshua Benuck");
+        let (mut ctx, mut event_loop) = cb.build()?;
+        let mut tiles = Vec::new();
+        for game in games.iter().filter(|g| g.installed) {
+            if game.logo.is_none() {
+                println!("Warning: {} has no logo", game.title);
+                continue;
+            }
+            tiles.push(load(&mut ctx, &PathBuf::from(game.logo.as_ref().unwrap()))?);
+        }
+        let indexes = (0..tiles.len()).collect();
+        let mut handler = ImageTileHandler { tiles, indexes };
+
+        let mut grid = Grid::new(Box::new(&mut handler), 200, 200);
+        graphics::set_resizable(&mut ctx, true)?;
+        event::run(&mut ctx, &mut event_loop, &mut grid)?;
+    }
+
     /*println!("{} {}", &file.display(), &id);
     let file = fs::File::open(file)?;
     let reader = BufReader::new(file);
@@ -123,6 +150,35 @@ fn main() -> Result<(), Error> {
     }*/
 
     Ok(())
+}
+
+// TODO: Improve ImageLoader API so these can be used from it.
+fn load(ctx: &mut Context, file: &PathBuf) -> GameResult<graphics::Image> {
+    let image = load_file(ctx, file)?;
+    let (width, height) = image.dimensions();
+    graphics::Image::from_rgba8(ctx, width as u16, height as u16, &image)
+}
+
+fn load_file(ctx: &mut Context, file: &PathBuf) -> GameResult<image::RgbaImage> {
+    let mut buf = Vec::new();
+    let mut reader = fs::File::open(file)?;
+    reader.read_to_end(&mut buf)?;
+    Ok(image::load_from_memory(&buf)?.to_rgba())
+}
+
+struct ImageTileHandler {
+    tiles: Vec<graphics::Image>,
+    indexes: Vec<usize>,
+}
+
+impl TileHandler for ImageTileHandler {
+    fn tiles(&self) -> &Vec<usize> {
+        return &self.indexes;
+    }
+
+    fn tile(&self, i: usize) -> &graphics::Image {
+        &self.tiles[i]
+    }
 }
 
 #[derive(Debug)]
