@@ -15,10 +15,12 @@
 
 use clap::{App, Arg};
 use failure::{err_msg, Error};
+use glob::glob;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 fn u8(buf: &[u8], pos: &mut usize) -> u8 {
@@ -83,10 +85,10 @@ fn main() -> Result<(), Error> {
         .expect("Unable to parse 'max' parameter.");
 
     let app_infos = AppInfo::load()?;
-    let mut games = SteamGame::from(&app_infos);
+    let mut games = SteamGame::from(&app_infos)?;
     if matches.is_present("list") {
         games.sort_unstable_by(|e1, e2| e1.title.cmp(&e2.title));
-        for game in &games {
+        for game in games.iter().filter(|g| g.installed) {
             println!("{} {} {:?}", game.id, game.title, game.logo);
             count += 1;
             if count > max {
@@ -102,6 +104,24 @@ fn main() -> Result<(), Error> {
             }
         }
     }
+
+    /*println!("{} {}", &file.display(), &id);
+    let file = fs::File::open(file)?;
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        let line = line?;
+        if line.contains("name") {
+            let name = line
+                .split("\"name\"")
+                .collect::<Vec<&str>>()
+                .last()
+                .unwrap()
+                .trim();
+            println!("name: {}", name);
+            break;
+        }
+    }*/
+
     Ok(())
 }
 
@@ -323,10 +343,26 @@ struct SteamGame {
     id: u32,
     title: String,
     logo: Option<String>,
+    installed: bool,
 }
 
 impl SteamGame {
-    fn from(app_infos: &Vec<AppInfo>) -> Vec<SteamGame> {
+    fn from(app_infos: &Vec<AppInfo>) -> Result<Vec<SteamGame>, Error> {
+        let lib_folders_vdf =
+            fs::File::open("c:/program files (x86)/steam/steamapps/libraryfolders.vdf")?;
+        let mut lib_folders = Vec::new();
+        lib_folders.push(PathBuf::from("c:/program files (x86)/steam/steamapps/"));
+        for line in BufReader::new(lib_folders_vdf).lines() {
+            let mut line = line?;
+            line = line.trim().to_string();
+            let mut parts = line.split("\t").filter(|p| p.len() > 0);
+            let name = parts.next().unwrap().replace("\"", "");
+            if usize::from_str(&name).is_ok() {
+                let value = parts.next().unwrap().replace("\"", "");
+                lib_folders.push(PathBuf::from(value.replace("\\\\", "\\")).join("steamapps"));
+            }
+        }
+        println!("Additional library folders to check: {:#?}", &lib_folders);
         let mut games = Vec::new();
         for app_info in app_infos {
             let app_id = app_info.u32_entry(&["appinfo", "appid"]).unwrap();
@@ -339,13 +375,30 @@ impl SteamGame {
                 continue;
             }
             let name = name.unwrap();
-            let logo = app_info.string_entry(&["appinfo", "common", "logo"]);
+            //let logo = app_info.string_entry(&["appinfo", "common", "logo"]);
+            let mut logo = Some(format!(
+                "c:/program files (x86)/steam/appcache/librarycache/{}_library_600x900.jpg",
+                app_id.to_string()
+            ));
+            if !PathBuf::from(logo.as_ref().unwrap()).exists() {
+                logo = None;
+            }
+            let mut installed = false;
+            for folder in &lib_folders {
+                if folder
+                    .join(format!("appmanifest_{}.acf", app_id.to_string()))
+                    .exists()
+                {
+                    installed = true;
+                }
+            }
             games.push(SteamGame {
                 id: app_id,
                 title: name,
                 logo,
+                installed,
             });
         }
-        games
+        Ok(games)
     }
 }
