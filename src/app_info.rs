@@ -13,18 +13,18 @@
 // appinfo.vdf has client icon guid
 // file is stored in steam/steam/games/guid.ico
 
-use clap::{App, Arg};
+// userdata/id/config/shortcuts.vdf - executables for all non-Steam
+// userdata/id/760/screenshots.vdf - names and ids for all non-Steam
+// userdata/id/config/grid/*.jpg - logo images for all non-Steam
+
+// https://github.com/michikora/Wox.Plugin.SteamLAUNCHER/blob/master/launcher.py
+// https://github.com/SkaceKamen/Wox.Plugin.Steam/blob/master/WoxSteam/Game.cs
+
 use failure::{err_msg, Error};
-use ggez::{event, graphics, Context, GameResult};
-use glob::glob;
-use image::imageops;
-use image_grid::grid::{Grid, TileHandler};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::io::Read;
 
 fn u8(buf: &[u8], pos: &mut usize) -> u8 {
     let value = buf[*pos];
@@ -50,139 +50,8 @@ fn le_u64(buf: &[u8], pos: &mut usize) -> u64 {
     value
 }
 
-fn main() -> Result<(), Error> {
-    let matches = App::new("steam")
-        .about("List and launch games from your local Steam library")
-        .arg(
-            Arg::with_name("launcher")
-                .long("launcher")
-                .help("Grid display of installed games"),
-        )
-        .arg(
-            Arg::with_name("list")
-                .long("list")
-                .short("l")
-                .help("List games"),
-        )
-        .arg(
-            Arg::with_name("type")
-                .long("type")
-                .short("t")
-                .takes_value(true)
-                .default_value("game")
-                .help("Dump game metadata"),
-        )
-        .arg(
-            Arg::with_name("max")
-                .long("max")
-                .short("m")
-                .takes_value(true)
-                .help("Dump game metadata"),
-        )
-        .arg(
-            Arg::with_name("dump")
-                .long("dump")
-                .short("d")
-                .takes_value(true)
-                .help("Dump game metadata"),
-        )
-        .get_matches();
-
-    let mut count = 0;
-    let max = usize::from_str(matches.value_of("max").unwrap_or("1000"))
-        .expect("Unable to parse 'max' parameter.");
-
-    let app_infos = AppInfo::load()?;
-    let mut games = SteamGame::from(&app_infos)?;
-    if matches.is_present("list") {
-        games.sort_unstable_by(|e1, e2| e1.title.cmp(&e2.title));
-        for game in games.iter().filter(|g| g.installed) {
-            println!("{} {} {:?}", game.id, game.title, game.logo);
-            count += 1;
-            if count > max {
-                break;
-            }
-        }
-    }
-    if let Some(id) = matches.value_of("dump") {
-        let id = u32::from_str(id)?;
-        for app_info in &app_infos {
-            if app_info.u32_entry(&["appinfo", "appid"]).unwrap() == id {
-                app_info.print_props(100);
-            }
-        }
-    }
-
-    if matches.is_present("launcher") {
-        let cb = ggez::ContextBuilder::new("Image Grid", "Joshua Benuck");
-        let (mut ctx, mut event_loop) = cb.build()?;
-        let mut tiles = Vec::new();
-        for game in games.iter().filter(|g| g.installed) {
-            if game.logo.is_none() {
-                println!("Warning: {} has no logo", game.title);
-                continue;
-            }
-            tiles.push(load(&mut ctx, &PathBuf::from(game.logo.as_ref().unwrap()))?);
-        }
-        let indexes = (0..tiles.len()).collect();
-        let mut handler = ImageTileHandler { tiles, indexes };
-
-        let mut grid = Grid::new(Box::new(&mut handler), 200, 200);
-        graphics::set_resizable(&mut ctx, true)?;
-        event::run(&mut ctx, &mut event_loop, &mut grid)?;
-    }
-
-    /*println!("{} {}", &file.display(), &id);
-    let file = fs::File::open(file)?;
-    let reader = BufReader::new(file);
-    for line in reader.lines() {
-        let line = line?;
-        if line.contains("name") {
-            let name = line
-                .split("\"name\"")
-                .collect::<Vec<&str>>()
-                .last()
-                .unwrap()
-                .trim();
-            println!("name: {}", name);
-            break;
-        }
-    }*/
-
-    Ok(())
-}
-
-// TODO: Improve ImageLoader API so these can be used from it.
-fn load(ctx: &mut Context, file: &PathBuf) -> GameResult<graphics::Image> {
-    let image = load_file(ctx, file)?;
-    let (width, height) = image.dimensions();
-    graphics::Image::from_rgba8(ctx, width as u16, height as u16, &image)
-}
-
-fn load_file(ctx: &mut Context, file: &PathBuf) -> GameResult<image::RgbaImage> {
-    let mut buf = Vec::new();
-    let mut reader = fs::File::open(file)?;
-    reader.read_to_end(&mut buf)?;
-    Ok(image::load_from_memory(&buf)?.to_rgba())
-}
-
-struct ImageTileHandler {
-    tiles: Vec<graphics::Image>,
-    indexes: Vec<usize>,
-}
-
-impl TileHandler for ImageTileHandler {
-    fn tiles(&self) -> &Vec<usize> {
-        return &self.indexes;
-    }
-
-    fn tile(&self, i: usize) -> &graphics::Image {
-        &self.tiles[i]
-    }
-}
-
 #[derive(Debug)]
-enum Property {
+pub enum Property {
     Uint32(u32),
     Uint64(u64),
     Map(HashMap<String, Property>),
@@ -190,19 +59,20 @@ enum Property {
 }
 
 #[derive(Debug)]
-struct AppInfo {
-    state: u32,
-    last_updated: u32,
-    access_token: u64,
-    checksum: [u8; 20],
-    change_no: u32,
-    props: HashMap<String, Property>,
+pub struct AppInfo {
+    pub state: u32,
+    pub last_updated: u32,
+    pub access_token: u64,
+    pub checksum: [u8; 20],
+    pub change_no: u32,
+    pub props: HashMap<String, Property>,
 }
 
 impl AppInfo {
     pub fn load() -> Result<Vec<AppInfo>, Error> {
         let mut buf = Vec::new();
-        fs::File::open("appinfo.vdf")?.read_to_end(&mut buf)?;
+        fs::File::open("c:/program files (x86)/steam/appcache/appinfo.vdf")?
+            .read_to_end(&mut buf)?;
         let mut pos = 0;
         println!("appinfo: {} bytes", buf.len());
         let version = u8(&buf, &mut pos);
@@ -261,21 +131,21 @@ impl AppInfo {
         }
     }
 
-    fn string_entry(&self, path: &[&str]) -> Option<String> {
+    pub fn string_entry(&self, path: &[&str]) -> Option<String> {
         match self.entry(path) {
             Some(Property::String(string)) => Some(string.to_owned()),
             _ => None,
         }
     }
 
-    fn u32_entry(&self, path: &[&str]) -> Option<u32> {
+    pub fn u32_entry(&self, path: &[&str]) -> Option<u32> {
         match self.entry(path) {
             Some(Property::Uint32(uint32)) => Some(*uint32),
             _ => None,
         }
     }
 
-    fn u64(&self, path: &[&str]) -> Option<u64> {
+    pub fn u64(&self, path: &[&str]) -> Option<u64> {
         match self.entry(path) {
             Some(Property::Uint64(uint64)) => Some(*uint64),
             _ => None,
@@ -393,68 +263,4 @@ fn parse_app_info(buf: &[u8]) -> Result<AppInfo, Error> {
         change_no,
         props: top_level_props,
     })
-}
-
-struct SteamGame {
-    id: u32,
-    title: String,
-    logo: Option<String>,
-    installed: bool,
-}
-
-impl SteamGame {
-    fn from(app_infos: &Vec<AppInfo>) -> Result<Vec<SteamGame>, Error> {
-        let lib_folders_vdf =
-            fs::File::open("c:/program files (x86)/steam/steamapps/libraryfolders.vdf")?;
-        let mut lib_folders = Vec::new();
-        lib_folders.push(PathBuf::from("c:/program files (x86)/steam/steamapps/"));
-        for line in BufReader::new(lib_folders_vdf).lines() {
-            let mut line = line?;
-            line = line.trim().to_string();
-            let mut parts = line.split("\t").filter(|p| p.len() > 0);
-            let name = parts.next().unwrap().replace("\"", "");
-            if usize::from_str(&name).is_ok() {
-                let value = parts.next().unwrap().replace("\"", "");
-                lib_folders.push(PathBuf::from(value.replace("\\\\", "\\")).join("steamapps"));
-            }
-        }
-        println!("Additional library folders to check: {:#?}", &lib_folders);
-        let mut games = Vec::new();
-        for app_info in app_infos {
-            let app_id = app_info.u32_entry(&["appinfo", "appid"]).unwrap();
-            let name = app_info.string_entry(&["appinfo", "common", "name"]);
-            if name.is_none() {
-                continue;
-            }
-            let r#type = app_info.string_entry(&["appinfo", "common", "type"]);
-            if r#type.is_none() || r#type.unwrap() != "Game" {
-                continue;
-            }
-            let name = name.unwrap();
-            //let logo = app_info.string_entry(&["appinfo", "common", "logo"]);
-            let mut logo = Some(format!(
-                "c:/program files (x86)/steam/appcache/librarycache/{}_library_600x900.jpg",
-                app_id.to_string()
-            ));
-            if !PathBuf::from(logo.as_ref().unwrap()).exists() {
-                logo = None;
-            }
-            let mut installed = false;
-            for folder in &lib_folders {
-                if folder
-                    .join(format!("appmanifest_{}.acf", app_id.to_string()))
-                    .exists()
-                {
-                    installed = true;
-                }
-            }
-            games.push(SteamGame {
-                id: app_id,
-                title: name,
-                logo,
-                installed,
-            });
-        }
-        Ok(games)
-    }
 }
