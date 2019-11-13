@@ -2,6 +2,7 @@ extern crate steam;
 
 use clap::{App, Arg};
 use failure::Error;
+use serde_json;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
@@ -45,11 +46,17 @@ fn main() -> Result<(), Error> {
                 .help("Dump game metadata"),
         )
         .arg(
+            Arg::with_name("json")
+                .long("json")
+                .short("j")
+                .help("Display output as json"),
+        )
+        .arg(
             Arg::with_name("installed")
                 .long("installed")
                 .short("i")
                 .takes_value(true)
-                .help("Dump game metadata"),
+                .help("Only show installed or uninstalled games"),
         )
         .get_matches();
 
@@ -68,14 +75,15 @@ fn main() -> Result<(), Error> {
                 .filter(|g| g.installed == installed)
                 .collect();
         }
-        for game in games.iter() {
-            println!(
-                "{} {} {:?} {}",
-                game.id, game.title, game.logo, game.installed
-            );
-            count += 1;
-            if count > max {
-                break;
+        if matches.is_present("json") {
+            let games_to_export: Vec<&SteamGame> = games.iter().take(max).collect();
+            println!("{}", serde_json::to_string(&games_to_export)?);
+        } else {
+            for game in games.iter().take(max) {
+                println!(
+                    "{} {} {:?} {}",
+                    game.id, game.title, game.logo, game.installed
+                );
             }
         }
     }

@@ -16,3 +16,5 @@ dirs = "*"
 failure = "*"
 glob = "*"
 image = "*"
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"

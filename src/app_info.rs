@@ -74,7 +74,6 @@ impl AppInfo {
         fs::File::open("c:/program files (x86)/steam/appcache/appinfo.vdf")?
             .read_to_end(&mut buf)?;
         let mut pos = 0;
-        println!("appinfo: {} bytes", buf.len());
         let version = u8(&buf, &mut pos);
         // Doc only knows about 24 and 26. My file has 27. What other diffs are there?
         if version != 0x24 && version != 0x26 && version != 0x27 {

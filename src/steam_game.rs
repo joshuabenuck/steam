@@ -1,10 +1,12 @@
 use crate::app_info::AppInfo;
 use failure::Error;
+use serde::Serialize;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::str::FromStr;
 
+#[derive(Serialize)]
 pub struct SteamGame {
     pub id: u32,
     pub title: String,
@@ -28,7 +30,7 @@ impl SteamGame {
                 lib_folders.push(PathBuf::from(value.replace("\\\\", "\\")).join("steamapps"));
             }
         }
-        println!("Additional library folders to check: {:#?}", &lib_folders);
+        eprintln!("Additional library folders to check: {:#?}", &lib_folders);
         let mut games = Vec::new();
         for app_info in app_infos {
             let app_id = app_info.u32_entry(&["appinfo", "appid"]).unwrap();
