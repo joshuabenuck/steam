@@ -112,7 +112,12 @@ impl AppInfo {
     }
 
     // internal helper
-    fn print_props_helper(&self, props: &HashMap<String, Property>, depth: usize, prefix: &str) {
+    pub fn print_props_helper(
+        &self,
+        props: &HashMap<String, Property>,
+        depth: usize,
+        prefix: &str,
+    ) {
         for key in props.keys() {
             let value = props.get(key).unwrap();
             if let Property::Map(nested_props) = value {
@@ -151,7 +156,27 @@ impl AppInfo {
         }
     }
 
-    fn entry(&self, path: &[&str]) -> Option<&Property> {
+    pub fn format_entry(&self, path: &[&str]) -> String {
+        match self.entry(path) {
+            None => format!("None"),
+            Some(Property::Uint32(uint32)) => format!("{}", uint32),
+            Some(Property::Uint64(uint64)) => format!("{}", uint64),
+            Some(Property::String(string)) => format!("{}", string),
+            Some(Property::Map(map)) => "(map)".to_string(),
+        }
+    }
+
+    pub fn print_entry(&self, path: &[&str]) {
+        match self.entry(path) {
+            None => println!("None"),
+            Some(Property::Uint32(uint32)) => println!("{}", uint32),
+            Some(Property::Uint64(uint64)) => println!("{}", uint64),
+            Some(Property::String(string)) => println!("{}", string),
+            Some(Property::Map(map)) => self.print_props_helper(&map, 1000, ""),
+        }
+    }
+
+    pub fn entry(&self, path: &[&str]) -> Option<&Property> {
         let mut props = &self.props;
         let mut value = None;
         let mut terminal = false;

@@ -43,7 +43,15 @@ fn main() -> Result<(), Error> {
                 .long("dump")
                 .short("d")
                 .takes_value(true)
+                .multiple(true)
                 .help("Dump game metadata"),
+        )
+        .arg(
+            Arg::with_name("prop")
+                .long("prop")
+                .short("p")
+                .takes_value(true)
+                .help("Retrieve the specified property"),
         )
         .arg(
             Arg::with_name("json")
@@ -87,11 +95,23 @@ fn main() -> Result<(), Error> {
             }
         }
     }
-    if let Some(id) = matches.value_of("dump") {
-        let id = u32::from_str(id)?;
-        for app_info in &app_infos {
-            if app_info.u32_entry(&["appinfo", "appid"]).unwrap() == id {
-                app_info.print_props(100);
+    let path: Option<Vec<&str>> = match matches.value_of("prop") {
+        None => None,
+        Some(prop) => Some(prop.split(",").collect()),
+    };
+    if let Some(ids) = matches.values_of("dump") {
+        for id in ids {
+            println!("{}", id);
+            let id = u32::from_str(id)?;
+            for app_info in &app_infos {
+                if app_info.u32_entry(&["appinfo", "appid"]).unwrap() == id {
+                    println!("State: {:#X}", app_info.state);
+                    if path.is_some() {
+                        app_info.print_entry(path.as_ref().unwrap());
+                    } else {
+                        app_info.print_props(100);
+                    }
+                }
             }
         }
     }
@@ -100,7 +120,7 @@ fn main() -> Result<(), Error> {
         for app_info in &app_infos {
             count += 1;
             println!(
-                "{} {} {}",
+                "{} {} {} {}",
                 app_info.u32_entry(&["appinfo", "appid"]).unwrap_or(0),
                 app_info
                     .string_entry(&["appinfo", "common", "type"])
@@ -108,6 +128,11 @@ fn main() -> Result<(), Error> {
                 app_info
                     .string_entry(&["appinfo", "common", "name"])
                     .unwrap_or("none".to_string()),
+                if path.is_some() {
+                    app_info.format_entry(path.as_ref().unwrap())
+                } else {
+                    "-".to_string()
+                }
             );
             //app_info.print_props(100);
             if count > max {
