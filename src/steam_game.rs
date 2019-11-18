@@ -1,4 +1,5 @@
 use crate::app_info::AppInfo;
+use crate::package_info::PackageInfo;
 use failure::Error;
 use serde::Serialize;
 use std::fs;
@@ -15,7 +16,10 @@ pub struct SteamGame {
 }
 
 impl SteamGame {
-    pub fn from(app_infos: &Vec<AppInfo>) -> Result<Vec<SteamGame>, Error> {
+    pub fn from(
+        app_infos: &Vec<AppInfo>,
+        pkg_infos: &Vec<PackageInfo>,
+    ) -> Result<Vec<SteamGame>, Error> {
         let lib_folders_vdf =
             fs::File::open("c:/program files (x86)/steam/steamapps/libraryfolders.vdf")?;
         let mut lib_folders = Vec::new();
@@ -32,8 +36,24 @@ impl SteamGame {
         }
         eprintln!("Additional library folders to check: {:#?}", &lib_folders);
         let mut games = Vec::new();
+        let owned_games = {
+            let mut owned_games = Vec::<u32>::new();
+            for pkg_info in pkg_infos {
+                // let id = pkg_info.id;
+                let app_ids = pkg_info.map_entry(&["appids"]).unwrap();
+                if app_ids.keys().len() > 1 {
+                    // continue;
+                }
+                let game_id = pkg_info.u32_entry(&["appids", "0"]).unwrap();
+                owned_games.push(game_id);
+            }
+            owned_games
+        };
         for app_info in app_infos {
             let app_id = app_info.u32_entry(&["appinfo", "appid"]).unwrap();
+            if !owned_games.contains(&app_id) {
+                continue;
+            }
             let name = app_info.string_entry(&["appinfo", "common", "name"]);
             if name.is_none() {
                 continue;

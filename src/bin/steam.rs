@@ -3,6 +3,7 @@ extern crate steam;
 use clap::{App, Arg};
 use failure::Error;
 use serde_json;
+use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
@@ -98,7 +99,7 @@ fn main() -> Result<(), Error> {
     let app_infos = AppInfo::load()?;
     let pkg_infos = PackageInfo::load()?;
 
-    let mut games = SteamGame::from(&app_infos)?;
+    let mut games = SteamGame::from(&app_infos, &pkg_infos)?;
     if matches.is_present("list") {
         games.sort_unstable_by(|e1, e2| e1.title.cmp(&e2.title));
         if let Some(installed) = matches.value_of("installed") {
@@ -129,6 +130,7 @@ fn main() -> Result<(), Error> {
         None => None,
         Some(prop) => Some(prop.split(",").collect()),
     };
+
     if let Some(ids) = matches.values_of("dump-app") {
         for id in ids {
             println!("{}", id);
@@ -153,7 +155,7 @@ fn main() -> Result<(), Error> {
             for pkg_info in &pkg_infos {
                 if pkg_info.id == id {
                     if path.is_some() {
-                        // pkg_info.print_entry(path.as_ref().unwrap());
+                        pkg_info.print_entry(path.as_ref().unwrap());
                     } else {
                         pkg_info.print_props(depth);
                     }

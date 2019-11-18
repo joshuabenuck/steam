@@ -155,9 +155,14 @@ impl PackageInfo {
                     break;
                 }
             }
+            let root_key = top_level_props.keys().next().unwrap().clone();
+            let real_root_map = match top_level_props.remove(&root_key).unwrap() {
+                Property::Map(map) => map,
+                _ => panic!("Unable to get root property"),
+            };
             package_infos.push(PackageInfo {
                 id: pkg_id,
-                props: top_level_props,
+                props: real_root_map,
             });
         }
         Ok(package_infos)
@@ -188,6 +193,70 @@ impl PackageInfo {
             } else {
                 println!("{}{} {:?}", prefix, key, value);
             }
+        }
+    }
+
+    pub fn map_entry(&self, path: &[&str]) -> Option<&HashMap<String, Property>> {
+        match self.entry(path) {
+            Some(Property::Map(map)) => Some(map),
+            _ => None,
+        }
+    }
+
+    pub fn string_entry(&self, path: &[&str]) -> Option<String> {
+        match self.entry(path) {
+            Some(Property::String(string)) => Some(string.to_owned()),
+            _ => None,
+        }
+    }
+
+    pub fn u32_entry(&self, path: &[&str]) -> Option<u32> {
+        match self.entry(path) {
+            Some(Property::Uint32(uint32)) => Some(*uint32),
+            _ => None,
+        }
+    }
+
+    pub fn entry(&self, path: &[&str]) -> Option<&Property> {
+        let mut props = &self.props;
+        let mut value = None;
+        let mut terminal = false;
+        for segment in path {
+            if terminal {
+                // We've reached a terminal property before reaching the
+                // last path segment.
+                return None;
+            }
+            value = props.get(*segment);
+            if value.is_none() {
+                // Unable to find a path segment.
+                return None;
+            }
+            match value.unwrap() {
+                Property::Map(nested_props) => props = nested_props,
+                _ => terminal = true,
+            }
+        }
+        value
+    }
+
+    pub fn format_entry(&self, path: &[&str]) -> String {
+        match self.entry(path) {
+            None => format!("None"),
+            Some(Property::Uint32(uint32)) => format!("{}", uint32),
+            Some(Property::Uint64(uint64)) => format!("{}", uint64),
+            Some(Property::String(string)) => format!("{}", string),
+            Some(Property::Map(map)) => "(map)".to_string(),
+        }
+    }
+
+    pub fn print_entry(&self, path: &[&str]) {
+        match self.entry(path) {
+            None => println!("None"),
+            Some(Property::Uint32(uint32)) => println!("{}", uint32),
+            Some(Property::Uint64(uint64)) => println!("{}", uint64),
+            Some(Property::String(string)) => println!("{}", string),
+            Some(Property::Map(map)) => self.print_props_helper(&map, 1000, ""),
         }
     }
 }
