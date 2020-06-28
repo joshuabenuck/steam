@@ -68,7 +68,7 @@ impl PackageInfo {
         let mut pos = 0;
         let version = u8(&buf, &mut pos);
         // Doc only knows about 24 and 26. My file has 27. What other diffs are there?
-        if version != 0x24 && version != 0x26 && version != 0x27 {
+        if version != 0x24 && version != 0x26 && version != 0x27 && version != 0x28 {
             return Err(err_msg(format!("Unknown version: {:x}", version)));
         }
         let type_sig = be_u16(&buf, &mut pos);
@@ -79,13 +79,13 @@ impl PackageInfo {
                 type_sig
             )));
         }
-        let version = u8(&buf, &mut pos);
-        if version != 0x06 && version != 0x07 {
-            return Err(err_msg(format!("Unknown version2: 0x{:x}", version)));
+        let version2 = u8(&buf, &mut pos);
+        if version2 != 0x06 && version2 != 0x07 {
+            return Err(err_msg(format!("Unknown version2: 0x{:x}", version2)));
         }
-        let version = le_u32(&buf, &mut pos);
-        if version != 0x01 {
-            return Err(err_msg(format!("Version3 must be 0x01: 0x{:x}", version)));
+        let version3 = le_u32(&buf, &mut pos);
+        if version3 != 0x01 {
+            return Err(err_msg(format!("Version3 must be 0x01: 0x{:x}", version3)));
         }
         let mut package_infos = Vec::new();
         loop {
@@ -94,7 +94,12 @@ impl PackageInfo {
             if pkg_id == 0xFFFFFFFF {
                 break;
             }
-            pos += 20;
+            // version 28, skip 28... otherwise skip 20
+            if version == 0x28 {
+                pos += 28;
+            } else {
+                pos += 20;
+            }
             let change_no = le_u32(&buf, &mut pos);
             let mut nesting_level = 0;
             let mut top_level_props = HashMap::new();

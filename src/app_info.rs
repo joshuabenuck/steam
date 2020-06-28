@@ -76,7 +76,7 @@ impl AppInfo {
         let mut pos = 0;
         let version = u8(&buf, &mut pos);
         // Doc only knows about 24 and 26. My file has 27. What other diffs are there?
-        if version != 0x24 && version != 0x26 && version != 0x27 {
+        if version != 0x24 && version != 0x26 && version != 0x27 && version != 0x28 {
             return Err(err_msg(format!("Unknown version: {:x}", version)));
         }
         let type_sig = be_u16(&buf, &mut pos);
