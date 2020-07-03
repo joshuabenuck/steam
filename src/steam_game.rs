@@ -1,6 +1,6 @@
 use crate::app_info::AppInfo;
 use crate::package_info::PackageInfo;
-use failure::Error;
+use anyhow::Error;
 use serde::Serialize;
 use std::fs;
 use std::io::{BufRead, BufReader};

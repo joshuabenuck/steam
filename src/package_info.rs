@@ -3,7 +3,7 @@
 // https://github.com/leovp/steamfiles/issues/3
 // https://github.com/ValvePython/vdf/issues/13
 
-use failure::{err_msg, Error};
+use anyhow::{anyhow, Error};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
@@ -69,23 +69,23 @@ impl PackageInfo {
         let version = u8(&buf, &mut pos);
         // Doc only knows about 24 and 26. My file has 27. What other diffs are there?
         if version != 0x24 && version != 0x26 && version != 0x27 && version != 0x28 {
-            return Err(err_msg(format!("Unknown version: {:x}", version)));
+            return Err(anyhow!("Unknown version: {:x}", version));
         }
         let type_sig = be_u16(&buf, &mut pos);
         if type_sig != 0x5556 {
             // DV
-            return Err(err_msg(format!(
+            return Err(anyhow!(
                 "File doesn't contain type sig 'DV': 0x{:x}",
                 type_sig
-            )));
+            ));
         }
         let version2 = u8(&buf, &mut pos);
         if version2 != 0x06 && version2 != 0x07 {
-            return Err(err_msg(format!("Unknown version2: 0x{:x}", version2)));
+            return Err(anyhow!("Unknown version2: 0x{:x}", version2));
         }
         let version3 = le_u32(&buf, &mut pos);
         if version3 != 0x01 {
-            return Err(err_msg(format!("Version3 must be 0x01: 0x{:x}", version3)));
+            return Err(anyhow!("Version3 must be 0x01: 0x{:x}", version3));
         }
         let mut package_infos = Vec::new();
         loop {

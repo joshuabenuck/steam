@@ -1,7 +1,7 @@
 extern crate steam;
 
+use anyhow::Error;
 use clap::{App, Arg};
-use failure::Error;
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
